@@ -11,4 +11,7 @@ libraryDependencies ++= Seq(
   "net.sf.opencsv" % "opencsv" % "2.3"
 )
 
-resolvers += "opengeo" at "http://repo.opengeo.org/"
+resolvers ++= Seq(
+  "opengeo" at "http://repo.opengeo.org/",
+  "osgeo" at "http://download.osgeo.org/webdav/geotools/"
+)
