@@ -1,11 +1,14 @@
-name := "dateline"
+name := "history"
 
 organization := "me.winslow.d"
 
-scalaVersion := "2.9.0-1"
+scalaVersion := "2.9.1"
+
+fork in run := true
 
 libraryDependencies ++= Seq(
-  "org.geoscript" %% "geoscript" % "[0,)",
-  "net.sf.json-lib" % "json-lib" % "2.3" classifier "jdk15",
+  "org.geoscript" %% "geoscript" % "0.7.3",
   "net.sf.opencsv" % "opencsv" % "2.3"
 )
+
+resolvers += "opengeo" at "http://repo.opengeo.org/"
