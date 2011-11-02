@@ -1,7 +1,12 @@
 import org.geoscript._
 
 object BLS extends App {
-  val ws = workspace.Directory("/home/dwins/opt/mapstory/MapStory_BLS/")
+  require(args.size > 0, "Please tell me where the data is")
+  val file = new java.io.File(args(0))
+  require(file.isDirectory,
+    "%s can't be found or isn't a directory (full path: %s)".format(file, file.getAbsolutePath()))
+
+  val ws = workspace.Directory(file)
   val data = ws.layer(ws.names.head)
 
   val rates = data.features.map(_.get[Double]("BLS_Rate"))

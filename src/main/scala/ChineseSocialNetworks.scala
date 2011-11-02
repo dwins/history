@@ -2,6 +2,12 @@ import org.geoscript._
 object ChineseSocialNetworks extends App {
   import au.com.bytecode.opencsv, java.io._
 
+  require(args.size > 0, "Please tell me where the data is")
+  val source = new java.io.File(args(0))
+  require(source.isDirectory,
+    "%s can't be found or isn't a directory (full path: %s)".format(source, source.getAbsolutePath()))
+
+
   // not all the files we got were in GBK encoding
   val encodings = 
     Map(
@@ -74,14 +80,13 @@ object ChineseSocialNetworks extends App {
       Field("xy_count", classOf[String])
     )
 
-  val dataDir = new File("/home/dwins/opt/mapstory/chinese_social_data/")
   val workspace = org.geoscript.workspace.Workspace(
-    "url" -> new File(dataDir, "shapefiles/").toURI.toURL,
+    "url" -> new File(source, "shapefiles/").toURI.toURL,
     ("charset" -> java.nio.charset.Charset.forName("UTF-8")).asInstanceOf[(String, Serializable)]
   )
 
   for {
-    file <- dataDir.listFiles.toSeq
+    file <- source.listFiles.toSeq
     if !file.isDirectory
     (header, data) = load(file)
     badRow <- data.find(_.size < header.size)
@@ -93,7 +98,7 @@ object ChineseSocialNetworks extends App {
   val exams = workspace.create("exams", examFields: _*)
 
   for {
-    file <- dataDir.listFiles.toSeq
+    file <- source.listFiles.toSeq
     if !file.isDirectory && !toSkip(file.getName)
     (header, data) = load(file)
   } {

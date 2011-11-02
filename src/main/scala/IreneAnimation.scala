@@ -2,7 +2,12 @@ import org.geoscript._
 import feature.{ Feature, Field, Schema }
 
 object IreneAnimation extends App {
-  val irene = workspace.Directory("/home/dwins/opt/mapstory/irene/")
+  require(args.size > 0, "Please tell me where the data is")
+  val file = new java.io.File(args(0))
+  require(file.isDirectory,
+    "%s can't be found or isn't a directory (full path: %s)".format(file, file.getAbsolutePath()))
+
+  val irene = workspace.Directory(file)
 
   val paths = irene.layer("irene_11_lin")
   val points = irene.layer("irene_11_pts")

@@ -1,14 +1,22 @@
 import org.geoscript._
+import java.io._
 
 object HarvardAttendance extends App {
-  val dataDir = "/home/dwins/opt/mapstory/harvard_international_attendance/"
+  require(args.size >= 2,
+    "Please provide the directories containing the harvard and reference data in that order.")
+  val harvardFile = new File(args(0))
+  require(harvardFile.isDirectory,
+    "%s can't be found or isn't a directory (full path: %s)".format(harvardFile, harvardFile.getAbsolutePath()))
+  val referenceFile = new File(args(1))
+  require(referenceFile.isDirectory,
+    "%s can't be found or isn't a directory (full path: %s)".format(referenceFile, referenceFile.getAbsolutePath()))
+
 
   val attendanceData = {
     import au.com.bytecode.opencsv._
     import scala.collection.JavaConversions._
-    import java.io._
     val csvFile = 
-      new File(dataDir + "multiannstbyschool91-11students.csv")
+      new File(harvardFile, "multiannstbyschool91-11students.csv")
     val reader = new CSVReader(new FileReader(csvFile))
     val lines = reader.readAll().drop(2) // title and blank spacer line
     val header = lines.head
@@ -16,8 +24,8 @@ object HarvardAttendance extends App {
     data map (row => (header zip row).toMap)
   }
 
-  val data = workspace.Directory(dataDir)
-  val reference = workspace.Directory("/home/dwins/opt/mapstory/reference/")
+  val harvard = workspace.Directory(harvardFile)
+  val reference = workspace.Directory(referenceFile)
 
   val neCountries = reference.layer("ne_10m_admin_0_countries")
   val tmBorders = reference.layer("TM_WORLD_BORDERS-0")
@@ -31,7 +39,7 @@ object HarvardAttendance extends App {
     "YO" -> 688
   )
 
-  val result = data.create("harvard_attendance",
+  val result = harvard.create("harvard_attendance",
     feature.Field("year", classOf[java.util.Date]),
     feature.Field("students", classOf[java.lang.Integer]),
     feature.Field("co_iap", classOf[String]),

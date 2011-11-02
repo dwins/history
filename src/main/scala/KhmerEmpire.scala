@@ -4,14 +4,17 @@ import style.combinators._
 import org.opengis.filter.Filter
 import org.geotools.filter.text.ecql.ECQL.{ toFilter => cql }
 
-object KhmerData {
-  lazy val density = layer.Shapefile("/home/dwins/opt/khmer/gis_data/density.shp")
-  lazy val polygons = layer.Shapefile("/home/dwins/opt/khmer/gis_data/polygons.shp")
-  lazy val animation = layer.Shapefile("/home/dwins/opt/khmer/gis_data/animation_points.shp")
-}
-
 object KhmerEmpire extends App {
-  import KhmerData._
+  require(args.size > 0, "Please tell me where the khmer data is")
+  val file = new java.io.File(args(0))
+  require(file.isDirectory,
+    "%s can't be found or isn't a directory (full path: %s)".format(file, file.getAbsolutePath()))
+
+  val khmer = workspace.Directory(args(0))
+  val density = khmer.layer("density")
+  val polygons = khmer.layer("polygons")
+  val animation = khmer.layer("animation")
+
 
   val times =
     polygons.features.map(_.get[Long]("YEAR")).toList.distinct.sorted
