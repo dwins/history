@@ -1,58 +1,26 @@
 import org.geoscript._
 
 object GlobalConflict extends App {
-  import java.io.File
   import au.com.bytecode.opencsv
-  def rows(s: String): Iterator[Seq[String]] = rows(new java.io.File(s))
-  def rows(f: File): Iterator[Seq[String]] = {
-    val reader = new opencsv.CSVReader(new java.io.BufferedReader(new java.io.FileReader(f)))
-    Iterator.continually(reader.readNext: Seq[String]).takeWhile { x =>
+  import java.io.{ BufferedReader, InputStreamReader }
+  import geometry._, feature._
+  type Row = Seq[String]
+
+  def rows(in: java.io.InputStream): Iterator[Row] = {
+    val reader =
+      new opencsv.CSVReader(new BufferedReader(new InputStreamReader(in)))
+    Iterator.continually(reader.readNext: Row).takeWhile { x =>
       if (x == null) { reader.close(); false } else true
     }
   }
 
-  type Row = Seq[String]
-
-  val conflictSites = rows("ConflictSite 4-2006_v2.csv").toSeq
-  val mainYears = rows("Main Conflict Table.csv").toSeq
-
-  trait Converter[A] {
-    def binding: Class[A]
-    def coerce(s: String): Option[A]
-  }
-
-  object Converters {
-    import java.lang.{String => JString}
-    import util.control.Exception.allCatch
-    private abstract class Impl[A](val binding: Class[A]) extends Converter[A]
-
-    val String: Converter[String] = new Impl(classOf[JString]) {
-      def coerce(s: JString): Option[JString] = Option(s).filterNot(_.isEmpty)
-    }
-
-    val Int: Converter[Int] = new Impl(classOf[Int]) {
-      def coerce(s: JString): Option[Int] = allCatch.opt(s.toInt)
-    }
-
-    val Double: Converter[Double] = new Impl(classOf[Double]) {
-      def coerce(s: JString): Option[Double] = allCatch.opt(s.toDouble)
-    }
-
-    val Date: Converter[java.util.Date] = new Impl(classOf[java.util.Date]) {
-      def coerce(s: JString): Option[java.util.Date] =
-        allCatch.opt(new java.text.SimpleDateFormat("MM/dd/yyyy").parse(s))
-    }
-  }
-
-  import geometry._, feature._
-
-  val sites = rows("ConflictSite 4-2006_v2.csv").drop(1).toIndexedSeq
-  val main = rows("Main Conflict Table.csv").drop(1).toIndexedSeq
+  val sites = rows(getClass.getResourceAsStream("ConflictSite 4-2006_v2.csv")).drop(1).toIndexedSeq
+  val main = rows(getClass.getResourceAsStream("Main Conflict Table.csv")).drop(1).toIndexedSeq
   val ws = workspace.Directory(".")
 
   val layer = ws.create("conflicts", 
     Field("ID",  classOf[java.lang.Integer]),
-    Field("Location",  classOf[String]),
+    Field("Site",  classOf[String]),
     Field("SideA",  classOf[String]),
     Field("SideA2nd",  classOf[String]),
     Field("SideB",  classOf[String]),
@@ -77,36 +45,33 @@ object GlobalConflict extends App {
     Field("GWNOLoc",  classOf[java.lang.Integer]),
     Field("Region",  classOf[java.lang.Integer]),
     Field("Version",  classOf[String]),
-    Field("the_geom",  classOf[geometry.MultiPolygon], "EPSG:4326")
+    Field("radius",  classOf[java.lang.Double]),
+    Field("the_geom",  classOf[geometry.MultiPoint], "EPSG:4326")
   )
 
   val format = new java.text.SimpleDateFormat("MM/dd/yyyy")
   def date(s: String): java.util.Date =
     util.control.Exception.allCatch.opt(format.parse(s)).getOrElse(null)
 
-  layer ++= (
-    for (event <- main) yield {
+  layer ++= main map { event => 
       val id = event(0)
       val year = event(8)
-      val locations =
-        sites
-         .filter(s => id == s(0) && year == s(1))
-         .map { s =>
-           val d = s.view.map(_.toDouble); 
-           Point(d(3), d(2)).buffer(d(4) / 1000d).asInstanceOf[Polygon]
-         }
-      if (locations.size > 0) println(locations.size)
-      val geom = MultiPolygon(locations)
+      val sitesForEvent = 
+        sites.filter(s => id == s(0) && year == s(1))
+          .map { _.view map (_ toDouble) }
+      val locations = sitesForEvent.map (d => Point(d(3), d(2)))
+      val radius = sitesForEvent.map(_(4)).sum / sites.size
+      val geom = MultiPoint(locations: _*)
       Feature(
         "ID" -> event(0),
-        "Location" -> event(1),
+        "Site" -> event(1),
         "SideA" -> event(2),
         "SideA2nd" -> event(3),
         "SideB" -> event(4),
         "SideB2nd" -> event(5),
         "Incomp" -> event(6),
         "Terr" -> event(7),
-        "YEAR" -> event(8),
+        "YEAR" -> new java.util.Date(year.toInt, 0, 0),
         "Int" -> event(9),
         "CumInt" -> event(10),
         "Type" -> event(11),
@@ -124,8 +89,8 @@ object GlobalConflict extends App {
         "GWNOLoc" -> event(23),
         "Region" -> event(24),
         "Version" -> event(25),
+        "radius" -> radius,
         "the_geom" -> geom
       )
     }
-  )
 }

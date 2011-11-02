@@ -1,4 +1,5 @@
 import org.geoscript._
+import feature.{ Feature, Field } 
 import style.combinators._
 import org.opengis.filter.Filter
 import org.geotools.filter.text.ecql.ECQL.{ toFilter => cql }
@@ -12,89 +13,58 @@ object KhmerData {
 object KhmerEmpire extends App {
   import KhmerData._
 
-  def join(years: Seq[Long], frames: Seq[Long]): Seq[(Long, Filter, Filter)] = {
-    def framesFor(year: Long) = 
-      frames.filter { 
-        frame => years.minBy { y => math.abs(frame - y) } == year 
-      }
-
-    for {
-      year <- years
-      frames = framesFor(year)
-    } yield
-      Triple(
-        year,
-        cql("YEAR = " + year.toString),
-        cql(
-          if (frames.isEmpty) "EXCLUDE"
-          else frames.mkString("YEAR = ", " OR YEAR = ", "")
-        )
-      )
-  }
-
-  val empire = (
-    (Fill("#000000") where cql("EMPIRE_NAM = 'Ayutthaya'")) and
-    (Fill("#0000FF") where cql("EMPIRE_NAM = 'Phayao'")) and
-    (Fill("#00FF00") where cql("EMPIRE_NAM = 'Laos'")) and
-    (Fill("#00FFFF") where cql("EMPIRE_NAM = 'Sukhtothai'")) and
-    (Fill("#FF0000") where cql("EMPIRE_NAM = 'China'")) and
-    (Fill("#FF00FF") where cql("EMPIRE_NAM = 'Chenla'")) and
-    (Fill("#FFFF00") where cql("EMPIRE_NAM = 'Haripunjaya'")) and
-    (Fill("#FFFFFF") where cql("EMPIRE_NAM = 'Lanna'")) and
-    (Fill("#0000AA") where cql("EMPIRE_NAM = 'Dvaravati'")) and
-    (Fill("#00AA00") where cql("EMPIRE_NAM = 'Sukhothai'")) and
-    (Fill("#00AAAA") where cql("EMPIRE_NAM = 'Funan'")) and
-    (Fill("#AA0000") where cql("EMPIRE_NAM = 'Champa'")) and
-    (Fill("#AA00AA") where cql("EMPIRE_NAM = 'Kambujadesa'"))
-  )
-
-  val markers =
-    Symbol("star", 
-      size=10, fill=Fill("#FFFE74"), stroke=Stroke("#000000"))
-
   val times =
     polygons.features.map(_.get[Long]("YEAR")).toList.distinct.sorted
 
-  val polyList = polygons.features.toList.sortBy { f => (f.get[Long]("YEAR"), f.get[Long]("EMPIRE_ID")) }
-  val densList = density.features.toList.sortBy { f => (f.get[Long]("YEAR"), f.get[Long]("EMPIRE_ID")) }
-
-  for ((p, d) <- polyList zip densList) {
-    println(p.properties.values.filterNot { _.isInstanceOf[geometry.Geometry] })
-    println(d.properties.values.filterNot { _.isInstanceOf[geometry.Geometry] })
+  val polyList = polygons.features.toList.sortBy {
+    f => (f.get[Long]("YEAR"), f.get[Long]("EMPIRE_ID"))
   }
 
-  // val ram = workspace.Memory()
-  // val rendering = ram.create("render", polygons.schema.fields: _*)
-  // val viewport = render.Viewport(polygons.bounds)
+  val densList = density.features.toList.sortBy {
+    f => (f.get[Long]("YEAR"), f.get[Long]("EMPIRE_ID"))
+  }
 
-  // for (t <- times) {
-  //   val toAdd = polygons.features.filter(_.get[Long]("YEAR") == t).toList
-  //   val empires = toAdd.map { _.get[Long]("EMPIRE_ID") }.toSet
-  //   rendering --= rendering.features.filter(f => empires(f.get[Long]("EMPIRE_ID")))
-  //   rendering ++= toAdd
+  var buffer = Seq.empty[Feature]
+  val rangedPolygons = polygons.workspace.create("rangedpolygons", 
+    polygons.schema.fields.filter(_.name != "YEAR") ++ 
+    Seq(Field("START_YEAR", classOf[java.lang.Long]), Field("END_YEAR", classOf[java.lang.Long]))
+  )
+ 
+  val timedAnimation = animation.workspace.create("timedanimation",
+    animation.schema.fields.filter(_.name != "YEAR") :+ Field("YEAR", classOf[java.util.Date])
+  )
 
-  //   val destination = render.PNG("img/khmer_polygon_%04d.png".format(t)) _
-  //   viewport.render(Seq(
-  //     rendering -> empire
-  //   )).writeTo(destination)
-  // }
+  def makeRanged(f: Feature, end: java.lang.Long): Feature = {
+    val props = 
+      f.properties.map {
+        case ("YEAR", v) => ("START_YEAR", v)
+        case x => x
+      }
+    Feature(props + ("END_YEAR" -> end)) 
+  }
 
-  // val joinedTimes = join(times.toSeq.sorted, frames.toSeq.sorted)
-  // joinedTimes foreach println
-  // val viewport = render.Viewport(polygons.bounds)
-  // for ((year, inTime, inFrame) <- joinedTimes.par) {
-  //   val destination = render.PNG("img/khmer_polygon_%04d.png".format(year)) _
-  //   viewport.render(Seq(
-  //     polygons -> (empire where inTime),
-  //     animation -> (markers where inFrame)
-  //   )).writeTo(destination)
-  // }
+  for (t <- times) {
+    val toAdd = polygons.features.filter(_.get[Long]("YEAR") == t).toList
+    val byEmpire = toAdd map { f => (f.get[Long]("EMPIRE_ID") -> f) } toMap
+    val invalidatedEmpires = buffer.collect {
+      case f if byEmpire contains f.get[Long]("EMPIRE_ID") =>
+        (f, byEmpire(f.get[Long]("EMPIRE_ID")))
+    }
 
-  // val grouped = polygons.features.groupBy(_.get[Long]("YEAR"))
-  // println(polygons.schema)
-  // grouped
-  //  .mapValues { _ map { _.get[Long]("EMPIRE_ID") } }
-  //  .toList
-  //  .sortBy { _._1 } 
-  //  .foreach { println }
+    rangedPolygons ++= invalidatedEmpires map { 
+      case (start, end) => makeRanged(start, end.get("YEAR"))
+    }
+
+    buffer = buffer.filterNot { f => byEmpire.contains(f.get[Long]("EMPIRE_ID")) }
+    buffer ++= toAdd
+  }
+
+  rangedPolygons ++= buffer.view.map { makeRanged(_, null) } 
+
+  timedAnimation ++= animation.features map { f => 
+    Feature(f.properties + (
+      "YEAR" -> new java.util.Date(f.get[Double]("YEAR").toInt, 0, 1, 0, 0, 0),
+      "DURATION" -> new java.util.Date(f.get[Double]("DURATION").toInt, 0, 1, 0, 0, 0)
+    ))
+  }
 }
